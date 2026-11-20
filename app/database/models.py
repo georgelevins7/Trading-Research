@@ -12,6 +12,7 @@ class Backtest(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     strategy: Mapped[str] = mapped_column(String(100), nullable=False)
     pair: Mapped[str] = mapped_column(String(50), nullable=False)
+    timeframe: Mapped[str] = mapped_column(String(10), nullable=True)
     timerange: Mapped[str] = mapped_column(String(50), nullable=False)
     balance: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")

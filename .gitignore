@@ -1,7 +1,24 @@
+
+# Environment and secrets
 .env
+.env.*
+!.env.example
 .venv/
+
+# Python
 __pycache__/
 .pytest_cache/
 *.pyc
 
-freqtrade-lab/user_data/
+# External cloned repository
+/freqtrade-lab/freqtrade-strategies/
+
+# Freqtrade runtime data
+/freqtrade-lab/user_data/*
+
+# Keep strategies and safe config template
+!/freqtrade-lab/user_data/strategies/
+!/freqtrade-lab/user_data/config.example.json
+
+# Local configuration must not be published
+/freqtrade-lab/user_data/config.json

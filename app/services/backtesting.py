@@ -16,6 +16,7 @@ async def run_backtest(request, task_id: str):
         "--config", "user_data/config.json",
         "--strategy", request.strategy,
         "--pairs", request.pair,
+        "--timeframe", request.timeframe,
         "--timerange", request.timerange,
         "--dry-run-wallet", str(request.balance),
         "--backtest-directory",

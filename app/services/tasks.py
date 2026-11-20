@@ -1,40 +1,91 @@
 import asyncio
-from uuid import uuid4
-
+from uuid import UUID
+from app.database.session import AsyncSessionLocal
+from app.database.crud import (
+    create_backtest,
+    get_backtest,
+    update_backtest,
+)
 from app.services.backtesting import run_backtest
-
-tasks = {}
+from app.database.crud import get_all_backtests
+from app.services.market_data import download_market_data
 
 
 async def execute_backtest(task_id, request):
-    tasks[task_id]["status"] = "running"
+    async with AsyncSessionLocal() as session:
+        await update_backtest(session, task_id, "running")
 
     try:
-        metrics = await run_backtest(request, task_id)
+        await download_market_data(pair=request.pair, timeframe=request.timeframe, timerange=request.timerange)
+        metrics = await run_backtest(request, str(task_id))
 
-        tasks[task_id]["status"] = "completed"
-        tasks[task_id]["metrics"] = metrics
+        async with AsyncSessionLocal() as session:
+            await update_backtest(
+                session,
+                task_id,
+                status="completed",
+                metrics=metrics,
+            )
 
     except Exception as error:
-        tasks[task_id]["status"] = "failed"
-        tasks[task_id]["error"] = str(error)
+        async with AsyncSessionLocal() as session:
+            await update_backtest(
+                session,
+                task_id,
+                status="failed",
+                error=str(error),
+            )
 
 
-def create_backtest_task(request):
-    task_id = str(uuid4())
+async def create_backtest_task(request):
+    async with AsyncSessionLocal() as session:
+        backtest = await create_backtest(session, request)
 
-    tasks[task_id] = {
-        "task_id": task_id,
-        "status": "pending",
-        "metrics": None,
+    asyncio.create_task(execute_backtest(backtest.id, request))
+
+    return {
+        "task_id": str(backtest.id),
+        "status": backtest.status,
+        "metrics": backtest.metrics,
     }
 
-    asyncio.create_task(
-        execute_backtest(task_id, request)
-    )
 
-    return tasks[task_id]
+async def get_backtest_task(task_id: UUID):
+    async with AsyncSessionLocal() as session:
+        backtest = await get_backtest(session, task_id)
 
+        if backtest is None:
+            return None
 
-def get_backtest_task(task_id):
-    return tasks.get(task_id)
+        return {
+            "task_id": str(backtest.id),
+            "strategy": backtest.strategy,
+            "pair": backtest.pair,
+            "timerange": backtest.timerange,
+            "timeframe": backtest.timeframe,
+            "balance": backtest.balance,
+            "status": backtest.status,
+            "metrics": backtest.metrics,
+            "error": backtest.error,
+            "created_at": backtest.created_at,
+        }
+
+async def get_all_backtest_tasks():
+    async with AsyncSessionLocal() as session:
+        backtests = await get_all_backtests(session)
+
+        return [
+            {
+                "task_id": str(backtest.id),
+                "strategy": backtest.strategy,
+                "pair": backtest.pair,
+                "timerange": backtest.timerange,
+                "timeframe": backtest.timeframe,
+                "balance": backtest.balance,
+                "status": backtest.status,
+                "metrics": backtest.metrics,
+                "error": backtest.error,
+                "created_at": backtest.created_at,
+            }
+            for backtest in backtests
+        ]

@@ -23,4 +23,11 @@ def read_backtest_result(archive_path: Path, strategy: str):
         "max_drawdown_pct": round(
             metrics["max_drawdown_account"] * 100, 2
         ),
+        "sharpe": metrics.get("sharpe"),
+        "sortino": metrics.get("sortino"),
+        "win_rate_pct": round(metrics["winrate"] * 100, 2)
+            if metrics.get("winrate") is not None else None,
+        "profit_factor": metrics.get("profit_factor"),
+        "cagr_pct": round(metrics["cagr"] * 100, 2)
+            if metrics.get("cagr") is not None else None,
     }
