@@ -100,7 +100,7 @@ def prepare_sandbox(
 
     command = [
         "docker", "run", "--rm",
-        "--network", "bridge",
+        "--network", "none",
         "--read-only",
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",

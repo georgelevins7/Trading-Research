@@ -39,9 +39,13 @@ async def execute_backtest(task_id, request):
             )
 
 
-async def create_backtest_task(request):
+async def create_backtest_task(request, owner_id: UUID):
     async with AsyncSessionLocal() as session:
-        backtest = await create_backtest(session, request)
+        backtest = await create_backtest(
+            session,
+            request,
+            owner_id=owner_id,
+        )
 
     asyncio.create_task(execute_backtest(backtest.id, request))
 
