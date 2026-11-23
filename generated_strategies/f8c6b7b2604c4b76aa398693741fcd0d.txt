@@ -1,0 +1,40 @@
+from freqtrade.strategy import IStrategy
+import pandas as pd
+import talib
+
+class DogeThreeRedCandlesStrategy(IStrategy):
+    timeframe = '5m'
+
+    minimal_roi = {
+        "0": 0.02
+    }
+
+    stoploss = -0.03
+
+    use_custom_stoploss = False
+    startup_candle_count = 10
+
+    def populate_indicators(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
+        dataframe['is_red'] = dataframe['close'] < dataframe['open']
+        return dataframe
+
+    def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
+        dataframe.loc[
+            (
+                (dataframe['is_red'] == True) &
+                (dataframe['is_red'].shift(1) == True) &
+                (dataframe['is_red'].shift(2) == True) & 
+                (dataframe['volume'] > 0)
+            ),
+            'enter_long'
+        ] = 1
+        return dataframe
+
+    def populate_exit_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
+        dataframe.loc[
+            (
+                (dataframe['close'] > 0)
+            ),
+            'exit_long'
+        ] = 0
+        return dataframe

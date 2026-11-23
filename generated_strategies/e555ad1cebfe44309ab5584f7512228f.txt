@@ -1,0 +1,50 @@
+from freqtrade.strategy import IStrategy
+from pandas import DataFrame
+import talib.abstract as ta
+import freqtrade.vendor.qtpylib.indicators as qtpylib
+
+class EmaBollingerStrategy(IStrategy):
+    timeframe = '5m'
+
+    minimal_roi = {
+        "0": 0.05,
+        "30": 0.02,
+        "60": 0.01,
+        "120": 0
+    }
+
+    stoploss = -0.03
+
+    trailing_stop = True
+    trailing_stop_positive = 0.015
+    trailing_stop_positive_offset = 0.025
+    trailing_only_offset_is_reached = True
+
+    def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        dataframe['ema20'] = ta.EMA(dataframe, timeperiod=20)
+        dataframe['ema50'] = ta.EMA(dataframe, timeperiod=50)
+
+        bollinger = qtpylib.bollinger_bands(qtpylib.typical_price(dataframe), window=20, stds=2)
+        dataframe['bb_lowerband'] = bollinger['lower']
+        dataframe['bb_middleband'] = bollinger['mid']
+        dataframe['bb_upperband'] = bollinger['upper']
+
+        return dataframe
+
+    def populate_entry_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        dataframe.loc[
+            (
+                (qtpylib.crossed_above(dataframe['ema20'], dataframe['ema50'])) &
+                (dataframe['close'] > dataframe['bb_lowerband']) &
+                (dataframe['close'] < dataframe['bb_upperband'])
+            ),
+            'enter_long'] = 1
+        return dataframe
+
+    def populate_exit_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        dataframe.loc[
+            (
+                (qtpylib.crossed_below(dataframe['ema20'], dataframe['ema50']))
+            ),
+            'exit_long'] = 1
+        return dataframe

@@ -1,0 +1,44 @@
+import numpy as np
+import pandas as pd
+from pandas import DataFrame
+from freqtrade.strategy import IStrategy
+import talib.abstract as ta
+
+class SolanaThreeRedCandlesStrategy(IStrategy):
+    timeframe = '1d'
+
+    minimal_roi = {
+        "0": 0.10,
+        "30": 0.05,
+        "60": 0.02,
+        "120": 0
+    }
+
+    stoploss = -0.15
+
+    use_custom_stoploss = False
+
+    def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        dataframe['rsi'] = ta.RSI(dataframe, timeperiod=14)
+        dataframe['ma_trend'] = ta.SMA(dataframe, timeperiod=50)
+        return dataframe
+
+    def populate_entry_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        dataframe.loc[
+            (
+                (dataframe['close'] < dataframe['open']) & 
+                (dataframe['close'].shift(1) < dataframe['open'].shift(1)) & 
+                (dataframe['close'].shift(2) < dataframe['open'].shift(2)) &
+                (dataframe['close'] > dataframe['ma_trend'])
+            ),
+            'enter_long'] = 1
+        return dataframe
+
+    def populate_exit_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        dataframe.loc[
+            (
+                (dataframe['close'] > dataframe['open']) &
+                (dataframe['rsi'] > 70)
+            ),
+            'exit_long'] = 1
+        return dataframe

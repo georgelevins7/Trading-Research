@@ -39,7 +39,7 @@ from technical import qtpylib
 
 class TestStrategy(IStrategy):
     """
-    This is a strategy template to get you started.
+    "description": "RSI crossover strategy. Opens long positions when RSI crosses above 30 and exits when RSI crosses above 70."
     More information in https://www.freqtrade.io/en/stable/strategy-customization/
 
     You can:

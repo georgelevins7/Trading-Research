@@ -1,0 +1,33 @@
+from freqtrade.strategy import IStrategy
+from pandas import DataFrame
+
+
+class MondayDCAStrategy(IStrategy):
+    timeframe = '1h'
+    minimal_roi = {
+        '0': 100.0
+    }
+    stoploss = -0.05
+    use_custom_stoploss = False
+
+    def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        return dataframe
+
+    def populate_entry_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        dataframe.loc[
+            (
+                (dataframe['date'].dt.dayofweek == 0) &
+                (dataframe['date'].dt.hour == 3)
+            ),
+            'enter_long'
+        ] = 1
+        return dataframe
+
+    def populate_exit_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        dataframe.loc[
+            (
+                False
+            ),
+            'exit_long'
+        ] = 1
+        return dataframe
