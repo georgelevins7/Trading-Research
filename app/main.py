@@ -5,6 +5,7 @@ from app.api.market_data import router as market_data_router
 from app.api.investment import router as investment_router
 from app.api.auth import router as auth_router
 from app.api.drafts import router as drafts_router
+from app.api.chat import router as chat_router
 
 app = FastAPI(
     title="Trading Research API",
@@ -17,3 +18,4 @@ app.include_router(market_data_router)
 app.include_router(investment_router)
 app.include_router(auth_router)
 app.include_router(drafts_router)
+app.include_router(chat_router)

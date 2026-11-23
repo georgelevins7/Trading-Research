@@ -8,6 +8,7 @@ from app.ai.tools import (
     search_strategy_catalog,
     generate_strategy_draft
 )
+from typing import TypedDict
 
 tools = [start_backtest, 
          get_backtest_result, 
@@ -16,8 +17,12 @@ tools = [start_backtest,
          search_strategy_catalog, 
          generate_strategy_draft]
 
+class AgentContext(TypedDict):
+    token: str
+
 agent = create_agent(
     model=model,
+    context_schema=AgentContext,
     tools=tools,
     system_prompt="""
     You are a Spot trading research assistant.

@@ -3,43 +3,36 @@ from langchain_core.tools import tool
 from app.schemas.backtest import BacktestRequest
 import time
 from app.ai.strategies.pipeline import generate_reviewed_draft
+from langchain.tools import ToolRuntime
 
 @tool
-def get_backtest_result(task_id: str) -> dict:
+def get_backtest_result(task_id: str, runtime: ToolRuntime) -> dict:
     """Get the status and results of a backtest by its task ID."""
 
     response = requests.get(
         f"http://127.0.0.1:8000/backtests/{task_id}",
-        timeout=15
-    )
+        headers={
+            "Authorization": f"Bearer {runtime.context['token']}"
+        },
+        timeout=15)
 
     response.raise_for_status()
     return response.json()
 
 @tool(args_schema=BacktestRequest)
-def start_backtest(**data):
-    """Run a backtest of a trading strategy on the Spot market."""
+def start_backtest(runtime: ToolRuntime, **data):
+    """Start a Spot backtest when explicitly requested by the user."""
 
     response = requests.post(
         "http://127.0.0.1:8000/backtests/",
         json=data,
-        timeout=15
-    )
+        headers={
+            "Authorization": f"Bearer {runtime.context['token']}"
+        },
+        timeout=30)
 
     response.raise_for_status()
-
-    data = response.json()
-    task_id = data["task_id"]
-
-    for i in range(60):
-        result = get_backtest_result.invoke({"task_id": task_id})
-
-        if result["status"] in ["completed", "failed"]:
-            return result
-
-        time.sleep(5)
-
-    return result
+    return response.json()
 
 @tool
 def list_strategies():
@@ -73,6 +66,16 @@ def search_strategy_catalog(query: str):
     return response.json()
 
 @tool
-def generate_strategy_draft(request: str):
-    """Generate and AI-review a Freqtrade strategy draft without executing it."""
-    return generate_reviewed_draft(request)
+def generate_strategy_draft(request: str, runtime: ToolRuntime):
+    """Generate a reviewed strategy draft ONLY when explicitly requested."""
+
+    response = requests.post(
+        "http://127.0.0.1:8000/drafts/generate",
+        json={"request": request},
+        headers={
+            "Authorization": f"Bearer {runtime.context['token']}"
+        },
+        timeout=300)
+
+    response.raise_for_status()
+    return response.json()
