@@ -1,10 +1,10 @@
 from app.services.tasks import get_backtest_task
 
-async def compare_backtests(task_ids):
+async def compare_backtests(task_ids, owner_id):
     results = []
 
     for task_id in dict.fromkeys(task_ids):
-        task = await get_backtest_task(task_id)
+        task = await get_backtest_task(task_id, owner_id)
 
         if task is None:
             raise ValueError(f"Backtest {task_id} not found")

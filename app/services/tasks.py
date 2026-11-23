@@ -8,7 +8,7 @@ from app.database.crud import (
     get_approved_draft
 )
 from app.services.backtesting import run_backtest
-from app.database.crud import get_all_backtests
+from app.database.crud import get_all_backtests, get_all_backtests
 from app.services.market_data import download_market_data
 from app.schemas.backtest import BacktestRequest, DraftBacktestRequest
 from app.services.sandbox import run_sandbox_backtest
@@ -56,11 +56,11 @@ async def create_backtest_task(request, owner_id: UUID):
     }
 
 
-async def get_backtest_task(task_id: UUID):
+async def get_backtest_task(task_id: UUID, owner_id: UUID):
     async with AsyncSessionLocal() as session:
-        backtest = await get_backtest(session, task_id)
+        backtest = await get_backtest(session, task_id, owner_id)
 
-        if backtest is None:
+        if backtest is None or backtest.owner_id != owner_id:
             return None
 
         return {
@@ -76,9 +76,9 @@ async def get_backtest_task(task_id: UUID):
             "created_at": backtest.created_at,
         }
 
-async def get_all_backtest_tasks():
+async def get_all_backtest_tasks(owner_id: UUID):
     async with AsyncSessionLocal() as session:
-        backtests = await get_all_backtests(session)
+        backtests = await get_all_backtests(session, owner_id)
 
         return [
             {

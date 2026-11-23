@@ -35,9 +35,10 @@ async def create_backtest(
 async def get_backtest(session: AsyncSession, task_id: UUID):
     return await session.get(Backtest, task_id)
 
-async def get_all_backtests(session: AsyncSession):
-    result = await session.execute(select(Backtest).order_by(Backtest.created_at.desc()))
-    return result.scalars()
+async def get_all_backtests(session: AsyncSession, owner_id: UUID):
+    result = await session.execute(select(Backtest).where(Backtest.owner_id == owner_id).
+                                   order_by(Backtest.created_at.desc()))
+    return result.scalars().all()
 
 async def update_backtest(
     session: AsyncSession,
