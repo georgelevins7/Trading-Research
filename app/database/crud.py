@@ -30,22 +30,18 @@ async def create_backtest(
 
     return backtest
 
+async def get_backtest(session: AsyncSession, task_id: UUID, owner_id: UUID):
+    return await session.scalar(select(Backtest).where(Backtest.id == task_id, Backtest.owner_id == owner_id))
 
-
-async def get_backtest(session: AsyncSession, task_id: UUID):
-    return await session.get(Backtest, task_id)
-
-async def get_all_backtests(session: AsyncSession, owner_id: UUID):
-    result = await session.execute(select(Backtest).where(Backtest.owner_id == owner_id).
-                                   order_by(Backtest.created_at.desc()))
-    return result.scalars().all()
+async def get_backtest(session: AsyncSession, task_id: UUID, owner_id: UUID):
+    return await session.scalar(select(Backtest).where(Backtest.id == task_id, Backtest.owner_id == owner_id))
 
 async def update_backtest(
     session: AsyncSession,
     task_id: UUID,
     status: str,
     metrics: dict | None = None,
-    error: str | None = None,
+    error: str | None = None
 ):
     backtest = await session.get(Backtest, task_id)
 
