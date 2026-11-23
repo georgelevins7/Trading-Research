@@ -177,6 +177,50 @@ async def hide_strategy(strategy_id: UUID, admin: User = Depends(require_admin))
             "status": "hidden",
         }
 
+@router.get("/moderation/hidden")
+async def hidden_strategies(admin: User = Depends(require_admin)):
+    async with AsyncSessionLocal() as session:
+        result = await session.scalars(
+            select(StrategyRecord).where(
+                StrategyRecord.moderation_status == "hidden"
+            )
+        )
+        return [
+            {
+                "id": strategy.id,
+                "name": strategy.name,
+                "version": strategy.version,
+            }
+            for strategy in result.all()
+        ]
+
+
+@router.post("/{strategy_id}/restore")
+async def restore_strategy(strategy_id: UUID, admin: User = Depends(require_admin)):
+    async with AsyncSessionLocal() as session:
+        strategy = await session.get(StrategyRecord, strategy_id)
+
+        if strategy is None:
+            raise HTTPException(404, "Strategy not found")
+
+        if strategy.moderation_status != "hidden":
+            raise HTTPException(409, "Strategy is not hidden")
+
+        try:
+            current_hash = sha256(Path(strategy.code_path).read_bytes()).hexdigest()
+        except OSError:
+            raise HTTPException(409, "Strategy file unavailable")
+
+        if current_hash != strategy.code_hash:
+            raise HTTPException(409, "Strategy code has changed")
+
+        strategy.visibility = "public"
+        strategy.moderation_status = "approved"
+        await session.commit()
+
+        return {"id": strategy.id, "status": "approved"}
+
+
 @router.post("/{strategy_id}/backtest", status_code=202)
 async def backtest_saved_strategy(strategy_id: UUID, data: DraftBacktestRequest,
         user: User = Depends(get_current_user)):
