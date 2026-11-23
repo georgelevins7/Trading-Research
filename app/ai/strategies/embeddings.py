@@ -10,6 +10,11 @@ load_dotenv()
 
 embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", output_dimensionality=768)
 
+async def embed_strategy_code(name: str, source_code: str):
+    text = f"Strategy: {name}\nSource code:\n{source_code}"
+    vectors = await embeddings.aembed_documents([text])
+    return vectors[0]
+
 async def main():
     async with AsyncSessionLocal() as session:
         result = await session.scalars(select(StrategyRecord).where(StrategyRecord.embedding.is_(None)))

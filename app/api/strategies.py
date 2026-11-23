@@ -14,6 +14,7 @@ from pathlib import Path
 from hashlib import sha256
 from app.schemas.backtest import DraftBacktestRequest
 from app.services.tasks import create_saved_strategy_backtest_task
+from app.ai.strategies.embeddings import embed_strategy_code
 
 class ModerationDecision(BaseModel):
     action: Literal["approve", "reject"]
@@ -79,14 +80,22 @@ async def pending_strategies(admin: User = Depends(require_admin)):
     async with AsyncSessionLocal() as session:
         result = await session.scalars(select(StrategyRecord).where(StrategyRecord.moderation_status == "pending"))
 
-        return [
-            {
+        strategies = []
+
+        for strategy in result.all():
+            try:
+                source = Path(strategy.code_path).read_text(encoding="utf-8")
+            except OSError:
+                source = None
+
+            strategies.append({
                 "id": strategy.id,
                 "name": strategy.name,
                 "owner_id": strategy.owner_id,
-            }
-            for strategy in result.all()
-        ]
+                "source_code": source,
+            })
+
+        return strategies
 
 @router.post("/{strategy_id}/moderate")
 async def moderate_strategy(strategy_id: UUID, decision: ModerationDecision, admin: User = Depends(require_admin)):
@@ -107,6 +116,10 @@ async def moderate_strategy(strategy_id: UUID, decision: ModerationDecision, adm
 
             if current_hash != strategy.code_hash:
                 raise HTTPException(409, "Strategy code has changed")
+            
+            strategy.embedding = await embed_strategy_code(
+                strategy.name,
+                Path(strategy.code_path).read_text(encoding="utf-8"))
 
             strategy.visibility = "public"
             strategy.moderation_status = "approved"

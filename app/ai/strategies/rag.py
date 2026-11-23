@@ -1,14 +1,11 @@
 import asyncio
 from dotenv import load_dotenv
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from sqlalchemy import select
 from app.database.session import AsyncSessionLocal
 from app.database.models import StrategyRecord
+from app.ai.strategies.embeddings import embeddings
 
 load_dotenv()
-
-embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001",output_dimensionality=768)
-
 
 async def search_strategies(query: str, limit: int = 3):
     query_vector = await embeddings.aembed_query(query)
