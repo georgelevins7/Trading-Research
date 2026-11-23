@@ -8,10 +8,11 @@ from app.database.crud import (
     get_approved_draft
 )
 from app.services.backtesting import run_backtest
-from app.database.crud import get_all_backtests, get_all_backtests
+from app.database.crud import get_all_backtests
 from app.services.market_data import download_market_data
 from app.schemas.backtest import BacktestRequest, DraftBacktestRequest
 from app.services.sandbox import run_sandbox_backtest
+from app.database.models import StrategyRecord
 
 async def execute_backtest(task_id, request):
     async with AsyncSessionLocal() as session:
@@ -154,5 +155,34 @@ async def create_draft_backtest_task(
         code_hash = draft.code_hash
 
     asyncio.create_task(execute_draft_backtest(task_id, request, draft_path, strategy_name, code_hash))
+
+    return {"task_id": str(task_id), "status": "pending"}
+
+async def create_saved_strategy_backtest_task(strategy_id: UUID, owner_id: UUID, request: DraftBacktestRequest):
+    async with AsyncSessionLocal() as session:
+        strategy = await session.get(StrategyRecord, strategy_id)
+
+        if strategy is None or not (
+            strategy.owner_id == owner_id or (strategy.visibility == "public"
+                                              and strategy.moderation_status == "approved")):
+            raise ValueError("Strategy not found")
+
+        backtest_request = BacktestRequest(
+            strategy=strategy.name,
+            pair=request.pair,
+            timeframe=request.timeframe,
+            timerange=request.timerange,
+            balance=request.balance,
+        )
+
+        backtest = await create_backtest(session, backtest_request, owner_id=owner_id)
+
+        task_id = backtest.id
+        code_path = strategy.code_path
+        strategy_name = strategy.name
+        code_hash = strategy.code_hash
+
+    asyncio.create_task(
+        execute_draft_backtest(task_id, request, code_path, strategy_name, code_hash))
 
     return {"task_id": str(task_id), "status": "pending"}
