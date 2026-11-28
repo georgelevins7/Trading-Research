@@ -7,9 +7,9 @@ import {
   CircleHelp, Clock3, Code2, Compass, Copy, Database, Eye, FlaskConical, Gauge,
   Layers3, LayoutDashboard, LoaderCircle, LockKeyhole, LogOut, Menu,
   Play, Plus, RefreshCw, Search, Send, ShieldCheck, SlidersHorizontal,
-  Sparkles, Target, TrendingDown, TrendingUp, Wallet, X, XCircle,
+  Sparkles, Target, Trash2, TrendingDown, TrendingUp, Wallet, X, XCircle,
 } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import ChatPanel from './components/ChatPanel'
 import { Candles } from './components/Candles'
 import {
@@ -22,6 +22,7 @@ type NavItem = { title: string; href: string; icon: typeof Activity }
 type Notification = { id: number; message: string; kind: 'success' | 'error' | 'info' }
 type DraftDetail = { id: string; name: string; status: string; source_code: string }
 type CompareResult = { leaders: Record<string, { task_id: string; value: number }>; results: Backtest[] }
+type EquityPoint = { time: string; balance: number }
 const MAIN_NAV: NavItem[] = [
   { title: 'Overview', href: '/', icon: LayoutDashboard },
   { title: 'Terminal', href: '/terminal', icon: Activity },
@@ -308,11 +309,55 @@ function BacktestsPage({ token, notify }: { token: string; notify: (msg: string,
   const [compare, setCompare] = useState<CompareResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [equity, setEquity] = useState<{ id: string; points: EquityPoint[] } | null>(null)
+  const [equityLoading, setEquityLoading] = useState(false)
   const refresh = useCallback(async () => { try { const result = await api<Backtest[]>('/backtests/', {}, token); setRuns(result); setError('') } catch (e) { setError(displayError(e)) } finally { setLoading(false) } }, [token])
   useEffect(() => { void refresh(); const timer = window.setInterval(() => void refresh(), 10000); return () => clearInterval(timer) }, [refresh])
   const done = runs.filter(x => x.status === 'completed')
   const current = runs.find(x => x.task_id === selected) || runs[0]
-  const chartData = done.slice(0, 8).reverse().map(x => ({ name: `${x.strategy.slice(0, 8)}·${shortId(x.task_id).slice(0, 3)}`, profit: x.metrics?.profit_pct ?? 0 }))
+  const currentId = current?.task_id
+  const currentStatus = current?.status
+  useEffect(() => {
+    if (!currentId || currentStatus !== 'completed') {
+      setEquity(null)
+      setEquityLoading(false)
+      return
+    }
+    let alive = true
+    setEquity(null)
+    setEquityLoading(true)
+    void api<Backtest & { equity_curve?: EquityPoint[] }>(`/backtests/${currentId}`, {}, token)
+      .then(result => {
+        if (!alive) return
+        const points = Array.isArray(result.equity_curve)
+          ? result.equity_curve.filter(p => p && typeof p.time === 'string' && typeof p.balance === 'number' && Number.isFinite(p.balance))
+          : []
+        setEquity({ id: currentId, points })
+      })
+      .catch(() => { if (alive) setEquity({ id: currentId, points: [] }) })
+      .finally(() => { if (alive) setEquityLoading(false) })
+    return () => { alive = false }
+  }, [currentId, currentStatus, token])
+  const equityPoints = equity?.id === currentId ? equity.points : []
+  const equityPositive = equityPoints.length < 2 || equityPoints[equityPoints.length - 1].balance >= equityPoints[0].balance
+  async function deleteRun(run: Backtest) {
+    if (run.status === 'running' || run.status === 'pending' || deleting) return
+    if (!window.confirm(`Delete ${run.strategy} (${shortId(run.task_id)}) from your backtest history?`)) return
+    setDeleting(run.task_id)
+    try {
+      await api<{ deleted: boolean }>(`/backtests/${run.task_id}`, { method: 'DELETE' }, token)
+      setRuns(previous => previous.filter(item => item.task_id !== run.task_id))
+      setMarked(previous => previous.filter(id => id !== run.task_id))
+      setSelected(previous => previous === run.task_id ? null : previous)
+      setCompare(null)
+      notify('Backtest deleted')
+    } catch (e) {
+      notify(displayError(e), 'error')
+    } finally {
+      setDeleting(null)
+    }
+  }
   async function runCompare() {
     if (marked.length < 2) return
     try { setCompare(await post('/backtests/compare', { task_ids: marked }, token)); notify('Comparison complete') }
@@ -320,11 +365,82 @@ function BacktestsPage({ token, notify }: { token: string; notify: (msg: string,
   }
   return <div className="page-container"><SectionHeading eyebrow="STRATEGY PERFORMANCE" title="Backtests" description="Actual Freqtrade results, backtest comparisons, and run history."><button className="btn btn-outline" onClick={() => void refresh()}><RefreshCw size={16}/> Refresh</button><button className="btn btn-primary" onClick={() => navigate('/strategies')}><Plus size={16}/> New backtest</button></SectionHeading>
     <div className="metrics-grid"><Metric icon={FlaskConical} label="Total runs" value={runs.length}/><Metric icon={CheckCircle2} label="Completed" value={done.length} tone="cyan"/><Metric icon={Clock3} label="In progress" value={runs.filter(x => x.status === 'pending' || x.status === 'running').length}/><Metric icon={Target} label="Best return" value={done.length ? `${Math.max(...done.map(x => x.metrics?.profit_pct ?? -Infinity)).toFixed(2)}%` : '—'} supporting="Across your completed runs" tone="gold"/></div>
-    <div className="backtest-grid"><Panel className="backtest-list"><PanelTitle icon={Clock3} title="Run history" hint={`${runs.length} records`}/>{loading ? <Loading/> : error ? <div className="inline-error">{error}</div> : !runs.length ? <Empty icon={FlaskConical} title="No backtests yet" description="Select a strategy and run it on historical data." action={<button className="btn btn-outline btn-small" onClick={() => navigate('/strategies')}>Go to strategies</button>}/> : <div className="run-list">{runs.map(run => <div key={run.task_id} className={`run-item ${current?.task_id === run.task_id ? 'active' : ''}`}><label className="run-check" title={run.status === 'completed' ? 'Add to comparison' : 'Wait for completion first'}><input type="checkbox" disabled={run.status !== 'completed'} checked={marked.includes(run.task_id)} onChange={e => setMarked(old => e.target.checked ? [...old, run.task_id] : old.filter(x => x !== run.task_id))}/></label><button className="run-main" onClick={() => setSelected(run.task_id)}><strong>{run.strategy}</strong><span>{run.pair} · {run.timeframe} · {prettyDate(run.created_at)}</span></button><div className="run-end"><span className={run.metrics?.profit_pct != null ? run.metrics.profit_pct >= 0 ? 'positive' : 'negative' : ''}>{run.metrics?.profit_pct != null ? `${run.metrics.profit_pct > 0 ? '+' : ''}${run.metrics.profit_pct}%` : '—'}</span><Status value={run.status}/></div></div>)}</div>}
+    <div className="backtest-grid">
+      <Panel className="backtest-list">
+        <PanelTitle icon={Clock3} title="Run history" hint={`${runs.length} records`}/>
+        {loading ? <Loading/> : error ? <div className="inline-error">{error}</div> : !runs.length ?
+          <Empty icon={FlaskConical} title="No backtests yet" description="Select a strategy and run it on historical data." action={<button className="btn btn-outline btn-small" onClick={() => navigate('/strategies')}>Go to strategies</button>}/> :
+          <div className="run-list">
+            {runs.map(run => (
+              <div key={run.task_id} className={`run-item ${current?.task_id === run.task_id ? 'active' : ''}`}>
+                <label className="run-check" title={run.status === 'completed' ? 'Add to comparison' : 'Wait for completion first'}>
+                  <input type="checkbox" disabled={run.status !== 'completed'} checked={marked.includes(run.task_id)} onChange={e => setMarked(old => e.target.checked ? [...old, run.task_id] : old.filter(x => x !== run.task_id))}/>
+                </label>
+                <button className="run-main" onClick={() => setSelected(run.task_id)}>
+                  <strong>{run.strategy}</strong>
+                  <span>{run.pair} · {run.timeframe} · {prettyDate(run.created_at)}</span>
+                </button>
+                <div className="run-end">
+                  <span className={run.metrics?.profit_pct != null ? run.metrics.profit_pct >= 0 ? 'positive' : 'negative' : ''}>
+                    {run.metrics?.profit_pct != null ? `${run.metrics.profit_pct > 0 ? '+' : ''}${run.metrics.profit_pct}%` : '—'}
+                  </span>
+                  <Status value={run.status}/>
+                </div>
+                <button
+                  type="button"
+                  className="run-delete"
+                  disabled={run.status === 'pending' || run.status === 'running' || deleting !== null}
+                  title="Delete from history"
+                  aria-label={`Delete ${run.strategy} backtest`}
+                  onClick={() => void deleteRun(run)}
+                >
+                  {deleting === run.task_id ? <LoaderCircle size={16} className="spin"/> : <Trash2 size={16}/>}
+                </button>
+              </div>
+            ))}
+          </div>}
+
         {marked.length >= 2 && <div className="compare-bar"><span>{marked.length} selected for comparison</span><button className="btn btn-primary btn-small" onClick={() => void runCompare()}><ArrowLeftRight size={15}/> Compare</button></div>}</Panel>
       <Panel className="backtest-detail"><PanelTitle icon={Gauge} title="Backtest details"/>{!current ? <Empty icon={Activity} title="Select a backtest" description="Results and metrics will appear after a run completes."/> : <><div className="result-hero"><div className="eyebrow">BACKTEST RESULT</div><h3>{current.strategy}</h3><div className="result-subtitle">{current.pair} · {current.timeframe} · {current.timerange}</div><Status value={current.status}/></div>{current.error && <div className="inline-error"><XCircle size={16}/>{current.error}</div>}{current.status === 'completed' && current.metrics && <div className="result-metrics">{[{ label: 'Profit', key: 'profit_pct', suffix: '%' }, { label: 'Trades', key: 'total_trades', suffix: '' }, { label: 'Max drawdown', key: 'max_drawdown_pct', suffix: '%' }, { label: 'Sharpe', key: 'sharpe', suffix: '' }, { label: 'Win rate', key: 'win_rate_pct', suffix: '%' }, { label: 'Profit factor', key: 'profit_factor', suffix: '' }].map(m => <div key={m.key}><span>{m.label}</span><strong>{current.metrics?.[m.key] == null ? '—' : `${Number(current.metrics[m.key]).toFixed(m.key === 'total_trades' ? 0 : 2)}${m.suffix}`}</strong></div>)}</div>}{current.status !== 'completed' && !current.error && <div className="notice-muted"><LoaderCircle className="spin" size={16}/> {current.status === 'running' ? 'Backtest is running on historical data.' : 'Backtest is queued.'}</div>}</>}</Panel></div>
     {compare && <Panel className="compare-panel"><PanelTitle icon={ArrowLeftRight} title="Strategy comparison"><button className="icon-btn" onClick={() => setCompare(null)}><X size={17}/></button></PanelTitle><div className="compare-results">{Object.entries(compare.leaders).map(([key,value]) => <div key={key}><span>{({ highest_profit: 'Highest profit', lowest_drawdown: 'Lowest drawdown', best_sharpe: 'Best Sharpe', best_sortino: 'Best Sortino', best_win_rate: 'Best win rate', best_profit_factor: 'Best profit factor' } as Record<string,string>)[key] || key}</span><strong>{shortId(value.task_id)} · {Number(value.value).toFixed(2)}</strong></div>)}</div></Panel>}
-    {chartData.length > 0 && <Panel className="performance-panel"><PanelTitle icon={Activity} title="Backtest returns" hint="Actual total return, %"/><div className="performance-chart"><ResponsiveContainer width="100%" height={240}><BarChart data={chartData} margin={{ top: 15, right: 10, left: 5, bottom: 5 }}><CartesianGrid vertical={false} stroke="#1e2a32" strokeDasharray="3 4"/><XAxis dataKey="name" tick={{ fill: '#8193a0', fontSize: 11 }} axisLine={false} tickLine={false}/><YAxis tick={{ fill: '#8193a0', fontSize: 11 }} axisLine={false} tickLine={false} unit="%"/><Tooltip contentStyle={{ background: '#111d25', border: '1px solid #29404a', color: '#eff8f9', borderRadius: 12 }} formatter={(v: unknown) => [`${Number(v).toFixed(2)}%`, 'Return']}/><Bar dataKey="profit" fill="#b2ee86" radius={[5, 5, 0, 0]}/></BarChart></ResponsiveContainer></div><div className="notice-muted">The chart shows actual final backtest metrics. An equity curve and BUY/SELL markers require an expanded results API.</div></Panel>}
+    <Panel className="performance-panel">
+      <PanelTitle icon={Activity} title="Equity Curve" hint={current?.status === 'completed' ? current.strategy : 'Select a completed run'}/>
+      {equityLoading ? <Loading label="Loading balance history…"/> : current?.status !== 'completed' ?
+        <Empty icon={Activity} title="Select a completed backtest" description="A strategy's balance history will appear here."/> :
+        equityPoints.length > 0 ?
+          <>
+            <div className="equity-summary">
+              <div><span>Starting balance</span><strong>{formatMoney(equityPoints[0].balance)}</strong></div>
+              <div><span>Final realized balance</span><strong className={equityPositive ? 'positive' : 'negative'}>{formatMoney(equityPoints[equityPoints.length - 1].balance)}</strong></div>
+              <div><span>Closed-trade change</span><strong className={equityPositive ? 'positive' : 'negative'}>{formatMoney(equityPoints[equityPoints.length - 1].balance - equityPoints[0].balance)}</strong></div>
+            </div>
+            <div className="performance-chart equity-chart">
+              <ResponsiveContainer width="100%" height={290}>
+                <AreaChart data={equityPoints} margin={{ top: 12, right: 20, left: 8, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="equityAreaFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={equityPositive ? '#b6ef79' : '#ff7d84'} stopOpacity={0.28}/>
+                      <stop offset="100%" stopColor={equityPositive ? '#b6ef79' : '#ff7d84'} stopOpacity={0.015}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} stroke="#1e2a32" strokeDasharray="3 4"/>
+                  <XAxis dataKey="time" tickFormatter={value => {
+                    const d = new Date(String(value))
+                    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                  }} minTickGap={35} tick={{ fill: '#8193a0', fontSize: 11 }} axisLine={false} tickLine={false}/>
+                  <YAxis domain={['auto', 'auto']} width={78} tickFormatter={v => formatMoney(Number(v))} tick={{ fill: '#8193a0', fontSize: 11 }} axisLine={false} tickLine={false}/>
+                  <Tooltip contentStyle={{ background: '#111d25', border: '1px solid #29404a', color: '#eff8f9', borderRadius: 12 }}
+                    labelFormatter={value => prettyDate(String(value))}
+                    formatter={(v: unknown) => [formatMoney(Number(v)), 'Realized balance']}/>
+                  <Area type="monotone" dataKey="balance" stroke={equityPositive ? '#b6ef79' : '#ff7d84'} strokeWidth={2.5}
+                    fill="url(#equityAreaFill)" dot={false} activeDot={{ r: 4 }}/>
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="notice-muted">Balance after closed trades. Open-position profit and loss is not included.</div>
+          </> :
+          <Empty icon={Activity} title="Balance history unavailable" description="This run has no closed-trade balance history yet. Total profit and risk metrics remain available above."/>}
+    </Panel>
   </div>
 }
 type DcaResult = {
