@@ -339,7 +339,7 @@ function BacktestsPage({ token, notify }: { token: string; notify: (msg: string,
       .finally(() => { if (alive) setEquityLoading(false) })
     return () => { alive = false }
   }, [currentId, currentStatus, token])
-  const equityPoints = equity?.id === currentId ? equity.points : []
+  const equityPoints = equity && equity.id === currentId ? equity.points : []
   const equityPositive = equityPoints.length < 2 || equityPoints[equityPoints.length - 1].balance >= equityPoints[0].balance
   async function deleteRun(run: Backtest) {
     if (run.status === 'running' || run.status === 'pending' || deleting) return
